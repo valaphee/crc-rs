@@ -1,12 +1,12 @@
-use crate::{Algorithm, Crc, Digest, Pclmulqdq, PclmulqdqCoefficients};
+use crate::{Algorithm, Crc, Digest, Sse, SseCoefficients};
 
-use super::{finalize, init, update_pclmulqdq};
+use super::{finalize, init, update_sse};
 
-impl Crc<Pclmulqdq<u32>> {
+impl Crc<Sse<u32>> {
     pub const fn new(algorithm: &'static Algorithm<u32>) -> Self {
         Self {
             algorithm,
-            table: PclmulqdqCoefficients::new(algorithm.poly as u64, algorithm.width),
+            table: SseCoefficients::new(algorithm),
         }
     }
 
@@ -17,10 +17,10 @@ impl Crc<Pclmulqdq<u32>> {
     }
 
     fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
-        unsafe { update_pclmulqdq(crc, self.algorithm, &self.table, bytes) }
+        unsafe { update_sse(crc, self.algorithm, &self.table, bytes) }
     }
 
-    pub fn digest(&self) -> Digest<Pclmulqdq<u32>> {
+    pub fn digest(&self) -> Digest<Sse<u32>> {
         self.digest_with_initial(self.algorithm.init)
     }
 
@@ -29,14 +29,14 @@ impl Crc<Pclmulqdq<u32>> {
     /// This overrides the initial value specified by the algorithm.
     /// The effects of the algorithm's properties `refin` and `width`
     /// are applied to the custom initial value.
-    pub fn digest_with_initial(&self, initial: u32) -> Digest<Pclmulqdq<u32>> {
+    pub fn digest_with_initial(&self, initial: u32) -> Digest<Sse<u32>> {
         let value = init(self.algorithm, initial);
         Digest::new(self, value)
     }
 }
 
-impl<'a> Digest<'a, Pclmulqdq<u32>> {
-    const fn new(crc: &'a Crc<Pclmulqdq<u32>>, value: u32) -> Self {
+impl<'a> Digest<'a, Sse<u32>> {
+    const fn new(crc: &'a Crc<Sse<u32>>, value: u32) -> Self {
         Digest { crc, value }
     }
 

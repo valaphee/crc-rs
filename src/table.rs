@@ -1,4 +1,5 @@
 use crate::util::*;
+use crc_catalog::Algorithm;
 
 pub(crate) const fn crc8_table(width: u8, poly: u8, reflect: bool) -> [u8; 256] {
     let poly = if reflect {
@@ -247,7 +248,7 @@ pub(crate) const fn crc128_table_slice_16(
 }
 
 #[derive(Debug)]
-pub struct PclmulqdqCoefficients {
+pub struct SseCoefficients {
     pub k1: i64,
     pub k2: i64,
     pub k3: i64,
@@ -258,10 +259,27 @@ pub struct PclmulqdqCoefficients {
     pub u: i64,
 }
 
-impl PclmulqdqCoefficients {
-    pub const fn new(rk08: u64, width: u8) -> Self {
-        let rk08 = 1u64 << width | rk08;
-        const fn grk07(rk08: u64) -> u64 {
+impl SseCoefficients {
+    pub const fn new(algorithm: &'static Algorithm<u32>) -> Self {
+        const fn xt_mod_px(mut t: u64, px: u64) -> u64 {
+            if t < 32 {
+                return 0;
+            }
+            t -= 31;
+
+            let mut n = 0x080000000;
+            let mut i = 0;
+            while i < t {
+                n <<= 1;
+                if n & 0x100000000 != 0 {
+                    n ^= px;
+                }
+                i += 1;
+            }
+            n << 32
+        }
+
+        const fn u(px: u64) -> u64 {
             let mut q = 0;
             let mut n = 0x100000000;
             let mut i = 0;
@@ -269,7 +287,7 @@ impl PclmulqdqCoefficients {
                 q <<= 1;
                 if n & 0x100000000 != 0 {
                     q |= 1;
-                    n ^= rk08;
+                    n ^= px;
                 }
                 n <<= 1;
                 i += 1;
@@ -277,33 +295,29 @@ impl PclmulqdqCoefficients {
             q
         }
 
-        const fn grk(rk08: u64, mut e: u64) -> u64 {
-            if e < 32 {
-                return 0;
+        let px = 1u64 << algorithm.width | algorithm.poly as u64;
+        if algorithm.refin {
+            Self {
+                k1: (xt_mod_px(4 * 128 + 32, px).reverse_bits() << 1) as i64,
+                k2: (xt_mod_px(4 * 128 - 32, px).reverse_bits() << 1) as i64,
+                k3: (xt_mod_px(128 + 32, px).reverse_bits() << 1) as i64,
+                k4: (xt_mod_px(128 - 32, px).reverse_bits() << 1) as i64,
+                k5: (xt_mod_px(64, px).reverse_bits() << 1) as i64,
+                k6: (xt_mod_px(32, px).reverse_bits() << 1) as i64,
+                px: (px.reverse_bits() >> 31) as i64,
+                u: (u(px).reverse_bits() >> 31) as i64,
             }
-            e -= 31;
-
-            let mut n = 0x080000000;
-            let mut i = 0;
-            while i < e {
-                n <<= 1;
-                if n & 0x100000000 != 0 {
-                    n ^= rk08;
-                }
-                i += 1;
+        } else {
+            Self {
+                k1: xt_mod_px(4 * 128 + 64, px) as i64,
+                k2: xt_mod_px(4 * 128, px) as i64,
+                k3: xt_mod_px(128 + 64, px) as i64,
+                k4: xt_mod_px(128, px) as i64,
+                k5: xt_mod_px(96, px) as i64,
+                k6: xt_mod_px(64, px) as i64,
+                px: px as i64,
+                u: u(px) as i64,
             }
-            n << 32
-        }
-
-        Self {
-            k1: (grk(rk08, 4 * 128 + 32).reverse_bits() << 1) as i64,
-            k2: (grk(rk08, 4 * 128 - 32).reverse_bits() << 1) as i64,
-            k3: (grk(rk08, 128 + 32).reverse_bits() << 1) as i64,
-            k4: (grk(rk08, 128 - 32).reverse_bits() << 1) as i64,
-            k5: (grk(rk08, 64).reverse_bits() << 1) as i64,
-            k6: (grk(rk08, 32).reverse_bits() << 1) as i64,
-            px: (rk08.reverse_bits() >> 31) as i64,
-            u: (grk07(rk08).reverse_bits() >> 31) as i64,
         }
     }
 }

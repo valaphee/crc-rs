@@ -1,5 +1,5 @@
 use crate::util::crc32;
-use crate::PclmulqdqCoefficients;
+use crate::SseCoefficients;
 use core::arch::x86_64 as arch;
 use crc_catalog::Algorithm;
 
@@ -153,10 +153,10 @@ const fn update_slice16(
     crc
 }
 
-unsafe fn update_pclmulqdq(
+unsafe fn update_sse(
     crc: u32,
     algorithm: &Algorithm<u32>,
-    table: &PclmulqdqCoefficients,
+    table: &SseCoefficients,
     mut bytes: &[u8],
 ) -> u32 {
     if bytes.len() < 128 {
@@ -171,8 +171,15 @@ unsafe fn update_pclmulqdq(
     }
 
     // M(x) mod P(x) = {H(x) • [x^(T+64) % P(x)]} ⊕ {L(x) • [x^T % P(x)]} ⊕ [G(x) % P(x)]
-    unsafe fn mx_mod_px(gx_mod_px: arch::__m128i, hx_lx: arch::__m128i, x_mod_p: arch::__m128i) -> arch::__m128i {
-        arch::_mm_xor_si128(arch::_mm_xor_si128(hx_lx, arch::_mm_clmulepi64_si128(gx_mod_px, x_mod_p, 0x00)), arch::_mm_clmulepi64_si128(gx_mod_px, x_mod_p, 0x11))
+    unsafe fn mx_mod_px(
+        gx_mod_px: arch::__m128i,
+        hx_lx: arch::__m128i,
+        x_mod_p: arch::__m128i,
+    ) -> arch::__m128i {
+        arch::_mm_xor_si128(
+            arch::_mm_xor_si128(hx_lx, arch::_mm_clmulepi64_si128(gx_mod_px, x_mod_p, 0x00)),
+            arch::_mm_clmulepi64_si128(gx_mod_px, x_mod_p, 0x11),
+        )
     }
 
     // Step 1 - Iteratively Fold by 4:

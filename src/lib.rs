@@ -28,7 +28,7 @@
 #![no_std]
 //#![forbid(unsafe_code)]
 
-use crate::table::PclmulqdqCoefficients;
+use crate::table::SseCoefficients;
 pub use crc_catalog::*;
 
 mod crc128;
@@ -49,12 +49,12 @@ pub struct Bytewise<W: Width>(core::marker::PhantomData<W>);
 pub struct NoTable<W: Width>(core::marker::PhantomData<W>);
 
 /// Implementation using pclmulqdq. Use it with `Crc<Pclmulqdq<W>>`
-pub struct Pclmulqdq<W: Width>(core::marker::PhantomData<W>);
+pub struct Sse<W: Width>(core::marker::PhantomData<W>);
 
 impl<W: Width> crate::private::Sealed for Slice16<W> {}
 impl<W: Width> crate::private::Sealed for Bytewise<W> {}
 impl<W: Width> crate::private::Sealed for NoTable<W> {}
-impl<W: Width> crate::private::Sealed for Pclmulqdq<W> {}
+impl<W: Width> crate::private::Sealed for Sse<W> {}
 
 impl<W: Width> crate::Implementation for Slice16<W> {
     type Width = W;
@@ -71,9 +71,9 @@ impl<W: Width> crate::Implementation for NoTable<W> {
     type Table = ();
 }
 
-impl<W: Width> crate::Implementation for Pclmulqdq<W> {
+impl<W: Width> crate::Implementation for Sse<W> {
     type Width = W;
-    type Table = PclmulqdqCoefficients;
+    type Table = SseCoefficients;
 }
 
 mod private {
