@@ -17,7 +17,7 @@ impl Crc<Pclmulqdq<u32>> {
     }
 
     fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
-        unsafe { update_pclmulqdq(crc, self.algorithm.refin, &self.table, bytes) }
+        unsafe { update_pclmulqdq(crc, self.algorithm, &self.table, bytes) }
     }
 
     pub fn digest(&self) -> Digest<Pclmulqdq<u32>> {
