@@ -26,8 +26,9 @@
 //! assert_eq!(digest.finalize(), 0xaee7);
 //! ```
 #![no_std]
-#![forbid(unsafe_code)]
+//#![forbid(unsafe_code)]
 
+use crate::table::PclmulqdqCoefficients;
 pub use crc_catalog::*;
 
 mod crc128;
@@ -47,9 +48,13 @@ pub struct Bytewise<W: Width>(core::marker::PhantomData<W>);
 /// Implementation using no lookup table. Use it with `Crc<NoTable<W>>`
 pub struct NoTable<W: Width>(core::marker::PhantomData<W>);
 
+/// Implementation using pclmulqdq. Use it with `Crc<Pclmulqdq<W>>`
+pub struct Pclmulqdq<W: Width>(core::marker::PhantomData<W>);
+
 impl<W: Width> crate::private::Sealed for Slice16<W> {}
 impl<W: Width> crate::private::Sealed for Bytewise<W> {}
 impl<W: Width> crate::private::Sealed for NoTable<W> {}
+impl<W: Width> crate::private::Sealed for Pclmulqdq<W> {}
 
 impl<W: Width> crate::Implementation for Slice16<W> {
     type Width = W;
@@ -64,6 +69,11 @@ impl<W: Width> crate::Implementation for Bytewise<W> {
 impl<W: Width> crate::Implementation for NoTable<W> {
     type Width = W;
     type Table = ();
+}
+
+impl<W: Width> crate::Implementation for Pclmulqdq<W> {
+    type Width = W;
+    type Table = PclmulqdqCoefficients;
 }
 
 mod private {

@@ -1,9 +1,12 @@
 use crate::util::crc32;
+use crate::PclmulqdqCoefficients;
+use core::arch::x86_64 as arch;
 use crc_catalog::Algorithm;
 
 mod bytewise;
 mod default;
 mod nolookup;
+mod pclmulqdq;
 mod slice16;
 
 // init is shared between all impls
@@ -148,6 +151,84 @@ const fn update_slice16(
         }
     }
     crc
+}
+
+unsafe fn update_pclmulqdq(
+    crc: u32,
+    _reflect: bool,
+    table: &PclmulqdqCoefficients,
+    mut bytes: &[u8],
+) -> u32 {
+    unsafe fn next(bytes: &mut &[u8]) -> arch::__m128i {
+        debug_assert!(bytes.len() >= 16);
+        let value = arch::_mm_loadu_si128(bytes.as_ptr() as *const arch::__m128i);
+        *bytes = &bytes[16..];
+        return value;
+    }
+
+    // M(x) mod P(x) = {H(x) • [x pow (T+64) mod P(x)]} xor {L(x) • [xT mod P(x)]} xor [G(x) mod P(x)]
+    unsafe fn reduce(gx_mod_px: arch::__m128i, hx_lx: arch::__m128i, x_mod_p: arch::__m128i) -> arch::__m128i {
+        arch::_mm_xor_si128(arch::_mm_xor_si128(hx_lx, arch::_mm_clmulepi64_si128(gx_mod_px, x_mod_p, 0x00)), arch::_mm_clmulepi64_si128(gx_mod_px, x_mod_p, 0x11))
+    }
+
+    // Step 1 - Iteratively Fold by 4:
+    let mut x3 = next(&mut bytes);
+    let mut x2 = next(&mut bytes);
+    let mut x1 = next(&mut bytes);
+    let mut x0 = next(&mut bytes);
+    x3 = arch::_mm_xor_si128(x3, arch::_mm_cvtsi32_si128(crc as i32));
+    let k1k2 = arch::_mm_set_epi64x(table.k2, table.k1);
+    while bytes.len() >= 64 {
+        x3 = reduce(x3, next(&mut bytes), k1k2);
+        x2 = reduce(x2, next(&mut bytes), k1k2);
+        x1 = reduce(x1, next(&mut bytes), k1k2);
+        x0 = reduce(x0, next(&mut bytes), k1k2);
+    }
+
+    // Step 2 - Iteratively Fold by 1
+    let k3k4 = arch::_mm_set_epi64x(table.k4, table.k3);
+    let mut x = reduce(x3, x2, k3k4);
+    x = reduce(x, x1, k3k4);
+    x = reduce(x, x0, k3k4);
+    while bytes.len() >= 16 {
+        x = reduce(x, next(&mut bytes), k3k4);
+    }
+
+    // Step 3 - Final Reduction of 128-bits
+    let x = arch::_mm_xor_si128(
+        arch::_mm_clmulepi64_si128(x, k3k4, 0x10),
+        arch::_mm_srli_si128(x, 8),
+    );
+    let x = arch::_mm_xor_si128(
+        arch::_mm_clmulepi64_si128(
+            arch::_mm_and_si128(x, arch::_mm_set_epi32(0, 0, 0, !0)),
+            arch::_mm_set_epi64x(0, table.k5),
+            0x00,
+        ),
+        arch::_mm_srli_si128(x, 4),
+    );
+
+    // Algorithm 1. Barrett Reduction Algorithm for a degree-32 polynomial modulus (polynomials defined over GF(2))
+    let px_u = arch::_mm_set_epi64x(table.u, table.px);
+
+    // T1(x) = floor( R(x) / x pow 32 ) * μ
+    let t1 = arch::_mm_clmulepi64_si128(
+        arch::_mm_and_si128(x, arch::_mm_set_epi32(0, 0, 0, !0)),
+        px_u,
+        0x10,
+    );
+
+    // T2(x) = floor(T1(x) / (x pow 32)) * P(x)
+    let t2 = arch::_mm_clmulepi64_si128(
+        arch::_mm_and_si128(t1, arch::_mm_set_epi32(0, 0, 0, !0)),
+        px_u,
+        0x00,
+    );
+
+    // C(x) = R(x) xor T2(x) mod (x pow 32)
+    let c = arch::_mm_extract_epi32(arch::_mm_xor_si128(x, t2), 1) as u32;
+
+    c
 }
 
 #[cfg(test)]

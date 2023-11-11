@@ -245,3 +245,65 @@ pub(crate) const fn crc128_table_slice_16(
     }
     table
 }
+
+#[derive(Debug)]
+pub struct PclmulqdqCoefficients {
+    pub k1: i64,
+    pub k2: i64,
+    pub k3: i64,
+    pub k4: i64,
+    pub k5: i64,
+    pub k6: i64,
+    pub px: i64,
+    pub u: i64,
+}
+
+impl PclmulqdqCoefficients {
+    pub const fn new(rk08: u64, width: u8) -> Self {
+        let rk08 = 1u64 << width | rk08;
+        const fn grk07(rk08: u64) -> u64 {
+            let mut q = 0;
+            let mut n = 0x100000000;
+            let mut i = 0;
+            while i < 33 {
+                q <<= 1;
+                if n & 0x100000000 != 0 {
+                    q |= 1;
+                    n ^= rk08;
+                }
+                n <<= 1;
+                i += 1;
+            }
+            q
+        }
+
+        const fn grk(rk08: u64, mut e: u64) -> u64 {
+            if e < 32 {
+                return 0;
+            }
+            e -= 31;
+
+            let mut n = 0x080000000;
+            let mut i = 0;
+            while i < e {
+                n <<= 1;
+                if n & 0x100000000 != 0 {
+                    n ^= rk08;
+                }
+                i += 1;
+            }
+            n << 32
+        }
+
+        Self {
+            k1: (grk(rk08, 4 * 128 + 32).reverse_bits() << 1) as i64,
+            k2: (grk(rk08, 4 * 128 - 32).reverse_bits() << 1) as i64,
+            k3: (grk(rk08, 128 + 32).reverse_bits() << 1) as i64,
+            k4: (grk(rk08, 128 - 32).reverse_bits() << 1) as i64,
+            k5: (grk(rk08, 64).reverse_bits() << 1) as i64,
+            k6: (grk(rk08, 32).reverse_bits() << 1) as i64,
+            px: (rk08.reverse_bits() >> 31) as i64,
+            u: (grk07(rk08).reverse_bits() >> 31) as i64,
+        }
+    }
+}
