@@ -248,7 +248,7 @@ pub(crate) const fn crc128_table_slice_16(
 }
 
 #[derive(Debug)]
-pub struct SseCoefficients {
+pub struct SimdConstants {
     pub k1: i64,
     pub k2: i64,
     pub k3: i64,
@@ -259,7 +259,7 @@ pub struct SseCoefficients {
     pub u: i64,
 }
 
-impl SseCoefficients {
+impl SimdConstants {
     pub const fn new(algorithm: &'static Algorithm<u32>) -> Self {
         const fn xt_mod_px(mut t: u64, px: u64) -> u64 {
             if t < 32 {

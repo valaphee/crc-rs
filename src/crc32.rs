@@ -1,12 +1,12 @@
 use crate::util::crc32;
-use crate::SseCoefficients;
+use crate::SimdConstants;
 use core::arch::x86_64 as arch;
 use crc_catalog::Algorithm;
 
 mod bytewise;
 mod default;
 mod nolookup;
-mod pclmulqdq;
+mod simd;
 mod slice16;
 
 // init is shared between all impls
@@ -153,10 +153,11 @@ const fn update_slice16(
     crc
 }
 
-unsafe fn update_sse(
+#[target_feature(enable = "pclmulqdq", enable = "sse2", enable = "sse4.1")]
+unsafe fn update_simd(
     crc: u32,
     algorithm: &Algorithm<u32>,
-    table: &SseCoefficients,
+    constants: &SimdConstants,
     mut bytes: &[u8],
 ) -> u32 {
     if bytes.len() < 128 {
@@ -188,7 +189,7 @@ unsafe fn update_sse(
     let mut x1 = next(&mut bytes);
     let mut x0 = next(&mut bytes);
     x3 = arch::_mm_xor_si128(x3, arch::_mm_cvtsi32_si128(crc as i32));
-    let k1_k2 = arch::_mm_set_epi64x(table.k2, table.k1);
+    let k1_k2 = arch::_mm_set_epi64x(constants.k2, constants.k1);
     while bytes.len() >= 64 {
         x3 = mx_mod_px(x3, next(&mut bytes), k1_k2);
         x2 = mx_mod_px(x2, next(&mut bytes), k1_k2);
@@ -197,7 +198,7 @@ unsafe fn update_sse(
     }
 
     // Step 2 - Iteratively Fold by 1:
-    let k3_k4 = arch::_mm_set_epi64x(table.k4, table.k3);
+    let k3_k4 = arch::_mm_set_epi64x(constants.k4, constants.k3);
     let mut x = mx_mod_px(x3, x2, k3_k4);
     x = mx_mod_px(x, x1, k3_k4);
     x = mx_mod_px(x, x0, k3_k4);
@@ -213,14 +214,14 @@ unsafe fn update_sse(
     let x = arch::_mm_xor_si128(
         arch::_mm_clmulepi64_si128(
             arch::_mm_and_si128(x, arch::_mm_set_epi32(0, 0, 0, !0)),
-            arch::_mm_set_epi64x(0, table.k5),
+            arch::_mm_set_epi64x(0, constants.k5),
             0x00,
         ),
         arch::_mm_srli_si128(x, 4),
     );
 
     // Algorithm 1. Barrett Reduction Algorithm for a degree-32 polynomial modulus (polynomials defined over GF(2))
-    let px_u = arch::_mm_set_epi64x(table.u, table.px);
+    let px_u = arch::_mm_set_epi64x(constants.u, constants.px);
 
     // Step 1: T1(x) = ⌊(R(x) % x^32)⌋ • μ
     let t1 = arch::_mm_clmulepi64_si128(
@@ -237,12 +238,12 @@ unsafe fn update_sse(
     );
 
     // Step 3: C(x) = R(x) ⊕ T2(x) % x^32
-    let c = arch::_mm_extract_epi32(arch::_mm_xor_si128(x, t2), 1) as u32;
+    let cx = arch::_mm_extract_epi32(arch::_mm_xor_si128(x, t2), 1) as u32;
 
     if !bytes.is_empty() {
-        update_nolookup(c, algorithm, bytes)
+        update_nolookup(cx, algorithm, bytes)
     } else {
-        c
+        cx
     }
 }
 
@@ -346,14 +347,14 @@ mod test {
     #[test]
     fn correctness() {
         let data: &[&str] = &[
-        "",
-        "1",
-        "1234",
-        "123456789",
-        "0123456789ABCDE",
-        "01234567890ABCDEFGHIJK",
-        "01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK",
-    ];
+            "",
+            "1",
+            "1234",
+            "123456789",
+            "0123456789ABCDE",
+            "01234567890ABCDEFGHIJK",
+            "01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK",
+        ];
 
         pub const CRC_32_ISCSI_NONREFLEX: Algorithm<u32> = Algorithm {
             width: 32,

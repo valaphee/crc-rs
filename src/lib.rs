@@ -28,7 +28,7 @@
 #![no_std]
 //#![forbid(unsafe_code)]
 
-use crate::table::SseCoefficients;
+use crate::table::SimdConstants;
 pub use crc_catalog::*;
 
 mod crc128;
@@ -48,13 +48,13 @@ pub struct Bytewise<W: Width>(core::marker::PhantomData<W>);
 /// Implementation using no lookup table. Use it with `Crc<NoTable<W>>`
 pub struct NoTable<W: Width>(core::marker::PhantomData<W>);
 
-/// Implementation using pclmulqdq. Use it with `Crc<Pclmulqdq<W>>`
-pub struct Sse<W: Width>(core::marker::PhantomData<W>);
+/// Implementation using platform-specific simd instructions. Use it with `Crc<Simd<W>>`
+pub struct Simd<W: Width>(core::marker::PhantomData<W>);
 
 impl<W: Width> crate::private::Sealed for Slice16<W> {}
 impl<W: Width> crate::private::Sealed for Bytewise<W> {}
 impl<W: Width> crate::private::Sealed for NoTable<W> {}
-impl<W: Width> crate::private::Sealed for Sse<W> {}
+impl<W: Width> crate::private::Sealed for Simd<W> {}
 
 impl<W: Width> crate::Implementation for Slice16<W> {
     type Width = W;
@@ -71,9 +71,9 @@ impl<W: Width> crate::Implementation for NoTable<W> {
     type Table = ();
 }
 
-impl<W: Width> crate::Implementation for Sse<W> {
+impl<W: Width> crate::Implementation for Simd<W> {
     type Width = W;
-    type Table = SseCoefficients;
+    type Table = SimdConstants;
 }
 
 mod private {
