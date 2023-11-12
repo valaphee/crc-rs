@@ -4,6 +4,7 @@ use crc_catalog::Algorithm;
 mod bytewise;
 mod default;
 mod nolookup;
+mod simd;
 mod slice16;
 
 const fn init(algorithm: &Algorithm<u8>, initial: u8) -> u8 {

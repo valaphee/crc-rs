@@ -154,7 +154,7 @@ const fn update_slice16(
 }
 
 #[target_feature(enable = "pclmulqdq", enable = "sse2", enable = "sse4.1")]
-unsafe fn update_simd(
+pub(crate) unsafe fn update_simd(
     crc: u32,
     algorithm: &Algorithm<u32>,
     constants: &SimdConstants,
@@ -189,7 +189,7 @@ unsafe fn update_simd(
     let mut x1 = next(&mut bytes);
     let mut x0 = next(&mut bytes);
     x3 = arch::_mm_xor_si128(x3, arch::_mm_cvtsi32_si128(crc as i32));
-    let k1_k2 = arch::_mm_set_epi64x(constants.k2, constants.k1);
+    let k1_k2 = arch::_mm_set_epi64x(constants.k2 as i64, constants.k1 as i64);
     while bytes.len() >= 64 {
         x3 = mx_mod_px(x3, next(&mut bytes), k1_k2);
         x2 = mx_mod_px(x2, next(&mut bytes), k1_k2);
@@ -198,7 +198,7 @@ unsafe fn update_simd(
     }
 
     // Step 2 - Iteratively Fold by 1:
-    let k3_k4 = arch::_mm_set_epi64x(constants.k4, constants.k3);
+    let k3_k4 = arch::_mm_set_epi64x(constants.k4 as i64, constants.k3 as i64);
     let mut x = mx_mod_px(x3, x2, k3_k4);
     x = mx_mod_px(x, x1, k3_k4);
     x = mx_mod_px(x, x0, k3_k4);
@@ -214,14 +214,14 @@ unsafe fn update_simd(
     let x = arch::_mm_xor_si128(
         arch::_mm_clmulepi64_si128(
             arch::_mm_and_si128(x, arch::_mm_set_epi32(0, 0, 0, !0)),
-            arch::_mm_set_epi64x(0, constants.k5),
+            arch::_mm_set_epi64x(0, constants.k5 as i64),
             0x00,
         ),
         arch::_mm_srli_si128(x, 4),
     );
 
     // Algorithm 1. Barrett Reduction Algorithm for a degree-32 polynomial modulus (polynomials defined over GF(2))
-    let px_u = arch::_mm_set_epi64x(constants.u, constants.px);
+    let px_u = arch::_mm_set_epi64x(constants.u as i64, constants.px as i64);
 
     // Step 1: T1(x) = ⌊(R(x) % x^32)⌋ • μ
     let t1 = arch::_mm_clmulepi64_si128(
@@ -249,7 +249,7 @@ unsafe fn update_simd(
 
 #[cfg(test)]
 mod test {
-    use crate::{Bytewise, Crc, Implementation, NoTable, Slice16};
+    use crate::{Bytewise, Crc, Implementation, NoTable, Simd, Slice16};
     use crc_catalog::{Algorithm, CRC_32_ISCSI};
 
     #[test]
@@ -374,6 +374,7 @@ mod test {
             for data in data {
                 let crc_slice16 = Crc::<Slice16<u32>>::new(alg);
                 let crc_nolookup = Crc::<NoTable<u32>>::new(alg);
+                let crc_simd = Crc::<Simd<u32>>::new(alg);
                 let expected = Crc::<Bytewise<u32>>::new(alg).checksum(data.as_bytes());
 
                 // Check that doing all at once works as expected
@@ -398,6 +399,10 @@ mod test {
                     digest.update(data2);
                     assert_eq!(digest.finalize(), expected);
                     let mut digest = crc_nolookup.digest();
+                    digest.update(data1);
+                    digest.update(data2);
+                    assert_eq!(digest.finalize(), expected);
+                    let mut digest = crc_simd.digest();
                     digest.update(data1);
                     digest.update(data2);
                     assert_eq!(digest.finalize(), expected);

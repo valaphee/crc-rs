@@ -6,7 +6,7 @@ impl Crc<Simd<u32>> {
     pub const fn new(algorithm: &'static Algorithm<u32>) -> Self {
         Self {
             algorithm,
-            table: SimdConstants::new(algorithm),
+            table: SimdConstants::new_32(algorithm),
         }
     }
 
