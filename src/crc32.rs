@@ -184,24 +184,24 @@ pub(crate) unsafe fn update_simd(
     }
 
     // Step 1 - Iteratively Fold by 4:
-    let mut x3 = next(&mut bytes);
-    let mut x2 = next(&mut bytes);
-    let mut x1 = next(&mut bytes);
     let mut x0 = next(&mut bytes);
-    x3 = arch::_mm_xor_si128(x3, arch::_mm_cvtsi32_si128(crc as i32));
+    let mut x1 = next(&mut bytes);
+    let mut x2 = next(&mut bytes);
+    let mut x3 = next(&mut bytes);
+    x0 = arch::_mm_xor_si128(x0, arch::_mm_cvtsi32_si128(crc as i32));
     let k1_k2 = arch::_mm_set_epi64x(constants.k2 as i64, constants.k1 as i64);
     while bytes.len() >= 64 {
-        x3 = mx_mod_px(x3, next(&mut bytes), k1_k2);
-        x2 = mx_mod_px(x2, next(&mut bytes), k1_k2);
-        x1 = mx_mod_px(x1, next(&mut bytes), k1_k2);
         x0 = mx_mod_px(x0, next(&mut bytes), k1_k2);
+        x1 = mx_mod_px(x1, next(&mut bytes), k1_k2);
+        x2 = mx_mod_px(x2, next(&mut bytes), k1_k2);
+        x3 = mx_mod_px(x3, next(&mut bytes), k1_k2);
     }
 
     // Step 2 - Iteratively Fold by 1:
     let k3_k4 = arch::_mm_set_epi64x(constants.k4 as i64, constants.k3 as i64);
-    let mut x = mx_mod_px(x3, x2, k3_k4);
-    x = mx_mod_px(x, x1, k3_k4);
-    x = mx_mod_px(x, x0, k3_k4);
+    let mut x = mx_mod_px(x0, x1, k3_k4);
+    x = mx_mod_px(x, x2, k3_k4);
+    x = mx_mod_px(x, x3, k3_k4);
     while bytes.len() >= 16 {
         x = mx_mod_px(x, next(&mut bytes), k3_k4);
     }
