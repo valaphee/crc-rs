@@ -1,4 +1,5 @@
-use crate::{Algorithm, Crc, Digest, Simd, SimdConstants};
+use crate::simd::SimdConstants;
+use crate::{Algorithm, Crc, Digest, Simd};
 
 use super::{finalize, init, update_simd};
 
@@ -6,7 +7,7 @@ impl Crc<Simd<u32>> {
     pub const fn new(algorithm: &'static Algorithm<u32>) -> Self {
         Self {
             algorithm,
-            table: SimdConstants::new_32(algorithm),
+            table: SimdConstants::new(algorithm),
         }
     }
 

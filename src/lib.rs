@@ -26,9 +26,9 @@
 //! assert_eq!(digest.finalize(), 0xaee7);
 //! ```
 #![no_std]
+#![feature(slice_as_chunks)] // temporary
 //#![forbid(unsafe_code)]
 
-use crate::table::SimdConstants;
 pub use crc_catalog::*;
 
 mod crc128;
@@ -36,6 +36,7 @@ mod crc16;
 mod crc32;
 mod crc64;
 mod crc8;
+mod simd;
 mod table;
 mod util;
 
@@ -73,7 +74,7 @@ impl<W: Width> crate::Implementation for NoTable<W> {
 
 impl<W: Width> crate::Implementation for Simd<W> {
     type Width = W;
-    type Table = SimdConstants;
+    type Table = simd::SimdConstants;
 }
 
 mod private {

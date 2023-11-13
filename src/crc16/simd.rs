@@ -1,5 +1,6 @@
 use crate::crc32::update_simd;
-use crate::{Algorithm, Crc, Digest, Simd, SimdConstants};
+use crate::simd::SimdConstants;
+use crate::{Algorithm, Crc, Digest, Simd};
 
 use super::{finalize, init};
 
@@ -7,7 +8,7 @@ impl Crc<Simd<u16>> {
     pub const fn new(algorithm: &'static Algorithm<u16>) -> Self {
         Self {
             algorithm,
-            table: SimdConstants::new_32(&Algorithm {
+            table: SimdConstants::new(&Algorithm {
                 width: algorithm.width,
                 poly: algorithm.poly as u32,
                 init: algorithm.init as u32,
