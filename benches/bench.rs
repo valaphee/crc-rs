@@ -5,10 +5,12 @@ pub const BLUETOOTH: Crc<u8> = Crc::<u8>::new(&CRC_8_BLUETOOTH);
 pub const BLUETOOTH_SLICE16: Crc<Slice16<u8>> = Crc::<Slice16<u8>>::new(&CRC_8_BLUETOOTH);
 pub const BLUETOOTH_BYTEWISE: Crc<Bytewise<u8>> = Crc::<Bytewise<u8>>::new(&CRC_8_BLUETOOTH);
 pub const BLUETOOTH_NOLOOKUP: Crc<NoTable<u8>> = Crc::<NoTable<u8>>::new(&CRC_8_BLUETOOTH);
+pub const BLUETOOTH_SIMD: Crc<Simd<u8>> = Crc::<Simd<u8>>::new(&CRC_8_BLUETOOTH);
 pub const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub const X25_SLICE16: Crc<Slice16<u16>> = Crc::<Slice16<u16>>::new(&CRC_16_IBM_SDLC);
 pub const X25_BYTEWISE: Crc<Bytewise<u16>> = Crc::<Bytewise<u16>>::new(&CRC_16_IBM_SDLC);
 pub const X25_NOLOOKUP: Crc<NoTable<u16>> = Crc::<NoTable<u16>>::new(&CRC_16_IBM_SDLC);
+pub const X25_SIMD: Crc<Simd<u16>> = Crc::<Simd<u16>>::new(&CRC_16_IBM_SDLC);
 pub const ISCSI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 pub const ISCSI_SLICE16: Crc<Slice16<u32>> = Crc::<Slice16<u32>>::new(&CRC_32_ISCSI);
 pub const ISCSI_BYTEWISE: Crc<Bytewise<u32>> = Crc::<Bytewise<u32>>::new(&CRC_32_ISCSI);
@@ -52,6 +54,9 @@ fn checksum(c: &mut Criterion) {
         })
         .bench_function("slice16", |b| {
             b.iter(|| BLUETOOTH_SLICE16.checksum(black_box(&bytes)))
+        })
+        .bench_function("simd", |b| {
+            b.iter(|| BLUETOOTH_SIMD.checksum(black_box(&bytes)))
         });
 
     c.benchmark_group("crc16")
@@ -65,6 +70,9 @@ fn checksum(c: &mut Criterion) {
         })
         .bench_function("slice16", |b| {
             b.iter(|| X25_SLICE16.checksum(black_box(&bytes)))
+        })
+        .bench_function("simd", |b| {
+            b.iter(|| X25_SIMD.checksum(black_box(&bytes)))
         });
 
     c.benchmark_group("crc32")
