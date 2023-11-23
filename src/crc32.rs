@@ -160,11 +160,17 @@ pub(crate) unsafe fn update_simd(
     bytes: &[u8],
 ) -> u32 {
     let (bytes_before, values, bytes_after) = bytes.align_to::<SimdValue>();
+    let (chunks, remaining_values) = values.as_chunks::<4>();
+
+    // Less than bytes needed for 16-byte alignment + 128
+    let Some(x4) = chunks.get(0) else {
+        return update_nolookup(crc, algorithm, bytes)
+    };
+
     crc = update_nolookup(crc, algorithm, bytes_before);
 
     // Step 1 - Iteratively Fold by 4:
-    let (chunks, remaining_values) = values.as_chunks::<4>();
-    let mut x4 = chunks[0];
+    let mut x4 = *x4;
     x4[0] ^= SimdValue::new([crc as u64, 0]);
     let k1_k2 = SimdValue::new([constants.k1, constants.k2]);
     for chunk in &chunks[1..] {
