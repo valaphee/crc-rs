@@ -85,9 +85,9 @@ pub(crate) trait SimdValueExt: BitXor + BitXorAssign + Sized {
 
     unsafe fn fold_8(self, x_mod_p: Self) -> Self;
 
-    unsafe fn fold_4(self, x_mod_p: u64) -> Self;
+    unsafe fn fold_4(self, x_mod_p: Self) -> Self;
 
-    unsafe fn barret_reduction(self, px: u64, u: u64) -> u32;
+    unsafe fn barret_reduction(self, px_u: Self) -> u32;
 }
 
 pub(crate) use x86::SimdValue;
