@@ -32,18 +32,25 @@ impl SimdValueExt for SimdValue {
         )) ^ Self(arch::_mm_srli_si128(self.0, 4))
     }
 
-    unsafe fn barret_reduction(self, px_u: Self) -> u32 {
-        let t1 = arch::_mm_clmulepi64_si128(
+    unsafe fn barret_reduction_32(self, px_u: Self) -> u32 {
+        let t1 = Self(arch::_mm_clmulepi64_si128(
             arch::_mm_and_si128(self.0, arch::_mm_cvtsi32_si128(!0)),
             px_u.0,
             0x10,
-        );
-        let t2 = arch::_mm_clmulepi64_si128(
-            arch::_mm_and_si128(t1, arch::_mm_cvtsi32_si128(!0)),
+        ));
+        let t2 = Self(arch::_mm_clmulepi64_si128(
+            arch::_mm_and_si128(t1.0, arch::_mm_cvtsi32_si128(!0)),
             px_u.0,
             0x00,
-        );
-        arch::_mm_extract_epi32(arch::_mm_xor_si128(self.0, t2), 1) as u32
+        ));
+        arch::_mm_extract_epi32((self ^ t2).0, 1) as u32
+    }
+
+    unsafe fn barret_reduction_64(self, px_u: Self) -> u64 {
+        let t1 = Self(arch::_mm_clmulepi64_si128(self.0, px_u.0, 0x10));
+        let t2 = Self(arch::_mm_clmulepi64_si128(t1.0, px_u.0, 0x00));
+        let t2hi = Self(arch::_mm_slli_si128(t1.0, 8));
+        arch::_mm_extract_epi64((self ^ t2 ^ t2hi).0, 1) as u64
     }
 }
 

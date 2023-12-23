@@ -319,6 +319,29 @@ fn crc_64() {
 }
 
 #[test]
+fn crc_64_simd() {
+    let algs = &[
+        CRC_40_GSM,
+        CRC_64_ECMA_182,
+        CRC_64_GO_ISO,
+        CRC_64_WE,
+        CRC_64_XZ,
+    ];
+    // To test simd fully, the data has to be at least 128 for the 4-fold + 16 for the 1-fold,
+    // the slice is also misaligned to test the alignment, and has a byte extra to test the remainder
+    let data = vec![0; 1 + 15 + 128 + 16 + 1];
+    for alg in algs {
+        // At the moment only the reverse domain works
+        if !alg.refin {
+            continue;
+        }
+        let crc = Crc::<NoTable<u64>>::new(alg);
+        let crc_simd = Crc::<Simd<u64>>::new(alg);
+        assert_eq!(crc.checksum(&data[1..]), crc_simd.checksum(&data[1..]));
+    }
+}
+
+#[test]
 fn crc_128() {
     let algs = &[CRC_82_DARC];
     for alg in algs {

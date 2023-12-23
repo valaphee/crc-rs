@@ -164,7 +164,7 @@ pub(crate) unsafe fn update_simd(
 
     // Less than bytes needed for 16-byte alignment + 128
     let Some(x4) = chunks.get(0) else {
-        return update_nolookup(crc, algorithm, bytes)
+        return update_nolookup(crc, algorithm, bytes);
     };
 
     crc = update_nolookup(crc, algorithm, bytes_before);
@@ -196,7 +196,7 @@ pub(crate) unsafe fn update_simd(
 
     // Barrett Reduction
     let px_u = SimdValue::new([constants.px, constants.u]);
-    let cx = x.barret_reduction(px_u);
+    let cx = x.barret_reduction_32(px_u);
 
     update_nolookup(cx, algorithm, bytes_after)
 }
@@ -322,7 +322,7 @@ mod test {
             residue: 0xb798b438,
         };
 
-        let algs_to_test = [&CRC_32_ISCSI, /*&CRC_32_ISCSI_NONREFLEX*/];
+        let algs_to_test = [&CRC_32_ISCSI /*&CRC_32_ISCSI_NONREFLEX*/];
 
         for alg in algs_to_test {
             for data in data {

@@ -71,9 +71,7 @@ fn checksum(c: &mut Criterion) {
         .bench_function("slice16", |b| {
             b.iter(|| X25_SLICE16.checksum(black_box(&bytes)))
         })
-        .bench_function("simd", |b| {
-            b.iter(|| X25_SIMD.checksum(black_box(&bytes)))
-        });
+        .bench_function("simd", |b| b.iter(|| X25_SIMD.checksum(black_box(&bytes))));
 
     c.benchmark_group("crc32")
         .throughput(Throughput::Bytes(size as u64))

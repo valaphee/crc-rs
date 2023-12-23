@@ -3,26 +3,26 @@ use crate::{Algorithm, Crc, Digest, Simd};
 
 use super::{finalize, init, update_simd};
 
-impl Crc<Simd<u32>> {
-    pub const fn new(algorithm: &'static Algorithm<u32>) -> Self {
+impl Crc<Simd<u64>> {
+    pub const fn new(algorithm: &'static Algorithm<u64>) -> Self {
         Self {
             algorithm,
-            table: SimdConstants::new_32(algorithm),
+            table: SimdConstants::new_64(algorithm),
         }
     }
 
-    pub fn checksum(&self, bytes: &[u8]) -> u32 {
+    pub fn checksum(&self, bytes: &[u8]) -> u64 {
         let mut crc = init(self.algorithm, self.algorithm.init);
         crc = self.update(crc, bytes);
         finalize(self.algorithm, crc)
     }
 
-    fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
+    fn update(&self, crc: u64, bytes: &[u8]) -> u64 {
         // TODO
         unsafe { update_simd(crc, self.algorithm, &self.table, bytes) }
     }
 
-    pub fn digest(&self) -> Digest<Simd<u32>> {
+    pub fn digest(&self) -> Digest<Simd<u64>> {
         self.digest_with_initial(self.algorithm.init)
     }
 
@@ -31,14 +31,14 @@ impl Crc<Simd<u32>> {
     /// This overrides the initial value specified by the algorithm.
     /// The effects of the algorithm's properties `refin` and `width`
     /// are applied to the custom initial value.
-    pub fn digest_with_initial(&self, initial: u32) -> Digest<Simd<u32>> {
+    pub fn digest_with_initial(&self, initial: u64) -> Digest<Simd<u64>> {
         let value = init(self.algorithm, initial);
         Digest::new(self, value)
     }
 }
 
-impl<'a> Digest<'a, Simd<u32>> {
-    const fn new(crc: &'a Crc<Simd<u32>>, value: u32) -> Self {
+impl<'a> Digest<'a, Simd<u64>> {
+    const fn new(crc: &'a Crc<Simd<u64>>, value: u64) -> Self {
         Digest { crc, value }
     }
 
@@ -46,7 +46,7 @@ impl<'a> Digest<'a, Simd<u32>> {
         self.value = self.crc.update(self.value, bytes);
     }
 
-    pub const fn finalize(self) -> u32 {
+    pub const fn finalize(self) -> u64 {
         finalize(self.crc.algorithm, self.value)
     }
 }

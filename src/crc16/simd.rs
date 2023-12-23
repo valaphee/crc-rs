@@ -8,7 +8,7 @@ impl Crc<Simd<u16>> {
     pub const fn new(algorithm: &'static Algorithm<u16>) -> Self {
         Self {
             algorithm,
-            table: SimdConstants::new(&Algorithm {
+            table: SimdConstants::new_32(&Algorithm {
                 width: algorithm.width,
                 poly: algorithm.poly as u32,
                 init: algorithm.init as u32,

@@ -1,9 +1,11 @@
+use crate::simd::{SimdConstants, SimdValue, SimdValueExt};
 use crate::util::crc64;
 use crc_catalog::Algorithm;
 
 mod bytewise;
 mod default;
 mod nolookup;
+mod simd;
 mod slice16;
 
 const fn init(algorithm: &Algorithm<u64>, initial: u64) -> u64 {
@@ -150,6 +152,54 @@ const fn update_slice16(
         }
     }
     crc
+}
+
+#[target_feature(enable = "pclmulqdq", enable = "sse2", enable = "sse4.1")]
+pub(crate) unsafe fn update_simd(
+    mut crc: u64,
+    algorithm: &Algorithm<u64>,
+    constants: &SimdConstants,
+    bytes: &[u8],
+) -> u64 {
+    let (bytes_before, values, bytes_after) = bytes.align_to::<SimdValue>();
+    let (chunks, remaining_values) = values.as_chunks::<4>();
+
+    // Less than bytes needed for 16-byte alignment + 128
+    let Some(x4) = chunks.get(0) else {
+        return update_nolookup(crc, algorithm, bytes);
+    };
+
+    crc = update_nolookup(crc, algorithm, bytes_before);
+
+    // Step 1 - Iteratively Fold by 4:
+    let mut x4 = *x4;
+    x4[0] ^= SimdValue::new([crc as u64, 0]);
+    let k1_k2 = SimdValue::new([constants.k1, constants.k2]);
+    for chunk in &chunks[1..] {
+        x4[0] = x4[0].fold_16(k1_k2) ^ chunk[0];
+        x4[1] = x4[1].fold_16(k1_k2) ^ chunk[1];
+        x4[2] = x4[2].fold_16(k1_k2) ^ chunk[2];
+        x4[3] = x4[3].fold_16(k1_k2) ^ chunk[3];
+    }
+
+    // Step 2 - Iteratively Fold by 1:
+    let k3_k4 = SimdValue::new([constants.k3, constants.k4]);
+    let mut x = x4[0].fold_16(k3_k4) ^ x4[1];
+    x = x.fold_16(k3_k4) ^ x4[2];
+    x = x.fold_16(k3_k4) ^ x4[3];
+    for block in remaining_values {
+        x = x.fold_16(k3_k4) ^ *block;
+    }
+
+    // Step 3 - Final Reduction of 128-bits
+    let k4_k5 = SimdValue::new([constants.k4, constants.k5]);
+    let x = x.fold_8(k4_k5);
+
+    // Barrett Reduction
+    let px_u = SimdValue::new([constants.px, constants.u]);
+    let cx = x.barret_reduction_64(px_u);
+
+    update_nolookup(cx, algorithm, bytes_after)
 }
 
 #[cfg(test)]

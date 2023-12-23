@@ -16,14 +16,14 @@ pub struct SimdConstants {
 }
 
 impl SimdConstants {
-    pub const fn new(algorithm: &Algorithm<u32>) -> Self {
+    pub const fn new_32(algorithm: &Algorithm<u32>) -> Self {
         const fn xt_mod_px(mut t: u32, px: u64) -> u64 {
             if t < 32 {
                 return 0;
             }
             t -= 31;
 
-            let mut n = 0x080000000;
+            let mut n = 0x80000000;
             let mut i = 0;
             while i < t {
                 n <<= 1;
@@ -76,6 +76,64 @@ impl SimdConstants {
             }
         }
     }
+
+    pub const fn new_64(algorithm: &Algorithm<u64>) -> Self {
+        const fn xt_mod_px(mut t: u32, px: u64) -> u64 {
+            if t < 64 {
+                return 0;
+            }
+            t -= 63;
+
+            let mut n = 0x8000000000000000;
+            let mut i = 0;
+            while i < t {
+                n = (n << 1) ^ ((0u64.wrapping_sub(n >> 63)) & px);
+                i += 1;
+            }
+            n
+        }
+
+        const fn u(px: u64) -> u64 {
+            let mut q = 0;
+            let mut n = 0x10000000000000000;
+            let mut i = 0;
+            while i < 65 {
+                q <<= 1;
+                if n & 0x10000000000000000 != 0 {
+                    q |= 1;
+                    n ^= px as u128;
+                }
+                n <<= 1;
+                i += 1;
+            }
+            q
+        }
+
+        let px = algorithm.poly << (u64::BITS as u8 - algorithm.width);
+        if algorithm.refin {
+            Self {
+                k1: xt_mod_px(2 * (4 * 128 + 32), px).reverse_bits() << 1,
+                k2: xt_mod_px(2 * (4 * 128 - 32), px).reverse_bits() << 1,
+                k3: xt_mod_px(2 * (128 + 32), px).reverse_bits() << 1,
+                k4: xt_mod_px(2 * (128 - 32), px).reverse_bits() << 1,
+                k5: xt_mod_px(2 * 64, px).reverse_bits() << 1,
+                k6: xt_mod_px(2 * 32, px).reverse_bits() << 1,
+                px: px.reverse_bits() >> 31,
+                u: u(px).reverse_bits() >> 31,
+            }
+        } else {
+            Self {
+                k1: xt_mod_px(2 * (4 * 128 + 64), px),
+                k2: xt_mod_px(2 * (4 * 128), px),
+                k3: xt_mod_px(2 * (128 + 64), px),
+                k4: xt_mod_px(2 * 128, px),
+                k5: xt_mod_px(2 * 96, px),
+                k6: xt_mod_px(2 * 64, px),
+                px,
+                u: u(px),
+            }
+        }
+    }
 }
 
 pub(crate) trait SimdValueExt: BitXor + BitXorAssign + Sized {
@@ -87,7 +145,9 @@ pub(crate) trait SimdValueExt: BitXor + BitXorAssign + Sized {
 
     unsafe fn fold_4(self, x_mod_p: Self) -> Self;
 
-    unsafe fn barret_reduction(self, px_u: Self) -> u32;
+    unsafe fn barret_reduction_32(self, px_u: Self) -> u32;
+
+    unsafe fn barret_reduction_64(self, px_u: Self) -> u64;
 }
 
 pub(crate) use x86::SimdValue;
