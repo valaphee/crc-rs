@@ -16,6 +16,7 @@ pub const ISCSI_SLICE16: Crc<Slice16<u32>> = Crc::<Slice16<u32>>::new(&CRC_32_IS
 pub const ISCSI_BYTEWISE: Crc<Bytewise<u32>> = Crc::<Bytewise<u32>>::new(&CRC_32_ISCSI);
 pub const ISCSI_NOLOOKUP: Crc<NoTable<u32>> = Crc::<NoTable<u32>>::new(&CRC_32_ISCSI);
 pub const ISCSI_SIMD: Crc<Simd<u32>> = Crc::<Simd<u32>>::new(&CRC_32_ISCSI);
+pub const CKSUM_SIMD: Crc<Simd<u32>> = Crc::<Simd<u32>>::new(&CRC_32_CKSUM);
 pub const GSM_40: Crc<u64> = Crc::<u64>::new(&CRC_40_GSM);
 pub const ECMA: Crc<u64> = Crc::<u64>::new(&CRC_64_ECMA_182);
 pub const ECMA_SLICE16: Crc<Slice16<u64>> = Crc::<Slice16<u64>>::new(&CRC_64_ECMA_182);
@@ -41,7 +42,7 @@ fn checksum(c: &mut Criterion) {
         .throughput(Throughput::Bytes(size as u64))
         .bench_function("baseline", |b| b.iter(|| baseline(black_box(&bytes))));
 
-    c.benchmark_group("crc8")
+    /*c.benchmark_group("crc8")
         .throughput(Throughput::Bytes(size as u64))
         .bench_function("default", |b| {
             b.iter(|| BLUETOOTH.checksum(black_box(&bytes)))
@@ -71,7 +72,7 @@ fn checksum(c: &mut Criterion) {
         .bench_function("slice16", |b| {
             b.iter(|| X25_SLICE16.checksum(black_box(&bytes)))
         })
-        .bench_function("simd", |b| b.iter(|| X25_SIMD.checksum(black_box(&bytes))));
+        .bench_function("simd", |b| b.iter(|| X25_SIMD.checksum(black_box(&bytes))));*/
 
     c.benchmark_group("crc32")
         .throughput(Throughput::Bytes(size as u64))
@@ -87,9 +88,12 @@ fn checksum(c: &mut Criterion) {
         })
         .bench_function("simd", |b| {
             b.iter(|| ISCSI_SIMD.checksum(black_box(&bytes)))
+        })
+        .bench_function("simdu", |b| {
+            b.iter(|| CKSUM_SIMD.checksum(black_box(&bytes)))
         });
 
-    c.benchmark_group("crc64")
+    /*c.benchmark_group("crc64")
         .throughput(Throughput::Bytes(size as u64))
         .bench_function("default", |b| b.iter(|| ECMA.checksum(black_box(&bytes))))
         .bench_function("nolookup", |b| {
@@ -117,7 +121,7 @@ fn checksum(c: &mut Criterion) {
 
     c.benchmark_group("checksum")
         .bench_function("crc8", |b| b.iter(|| BLUETOOTH.checksum(black_box(&bytes))))
-        .bench_function("crc40", |b| b.iter(|| GSM_40.checksum(black_box(&bytes))));
+        .bench_function("crc40", |b| b.iter(|| GSM_40.checksum(black_box(&bytes))));*/
 }
 
 criterion_group!(checksum_benches, checksum);

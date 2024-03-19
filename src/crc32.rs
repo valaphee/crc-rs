@@ -1,3 +1,6 @@
+use std::arch::x86_64;
+use std::ptr::read_unaligned;
+
 use crate::simd::{SimdConstants, SimdValue, SimdValueExt};
 use crate::util::crc32;
 use crc_catalog::Algorithm;
@@ -159,46 +162,103 @@ pub(crate) unsafe fn update_simd(
     constants: &SimdConstants,
     bytes: &[u8],
 ) -> u32 {
-    let (bytes_before, values, bytes_after) = bytes.align_to::<SimdValue>();
-    let (chunks, remaining_values) = values.as_chunks::<4>();
+    return if algorithm.refin {
+        let (bytes_before, values, bytes_after) = bytes.align_to::<SimdValue>();
+        let (chunks, remaining_values) = values.as_chunks::<4>();
 
-    // Less than bytes needed for 16-byte alignment + 128
-    let Some(x4) = chunks.get(0) else {
-        return update_nolookup(crc, algorithm, bytes);
-    };
+        // Less than bytes needed for 16-byte alignment + 128
+        let Some(x4) = chunks.get(0) else {
+            return update_nolookup(crc, algorithm, bytes);
+        };
 
-    crc = update_nolookup(crc, algorithm, bytes_before);
+        crc = update_nolookup(crc, algorithm, bytes_before);
 
-    // Step 1 - Iteratively Fold by 4:
-    let mut x4 = *x4;
-    x4[0] ^= SimdValue::new([crc as u64, 0]);
-    let k1_k2 = SimdValue::new([constants.k1, constants.k2]);
-    for chunk in &chunks[1..] {
-        x4[0] = x4[0].fold_16(k1_k2) ^ chunk[0];
-        x4[1] = x4[1].fold_16(k1_k2) ^ chunk[1];
-        x4[2] = x4[2].fold_16(k1_k2) ^ chunk[2];
-        x4[3] = x4[3].fold_16(k1_k2) ^ chunk[3];
+        // Step 1 - Iteratively Fold by 4:
+        let mut x4 = *x4;
+        x4[0] ^= SimdValue::new([crc as u64, 0]);
+        let k1_k2 = SimdValue::new([constants.k1, constants.k2]);
+        for chunk in &chunks[1..] {
+            x4[0] = x4[0].fold_16(k1_k2) ^ chunk[0];
+            x4[1] = x4[1].fold_16(k1_k2) ^ chunk[1];
+            x4[2] = x4[2].fold_16(k1_k2) ^ chunk[2];
+            x4[3] = x4[3].fold_16(k1_k2) ^ chunk[3];
+        }
+
+        // Step 2 - Iteratively Fold by 1:
+        let k3_k4 = SimdValue::new([constants.k3, constants.k4]);
+        let mut x = x4[0].fold_16(k3_k4) ^ x4[1];
+        x = x.fold_16(k3_k4) ^ x4[2];
+        x = x.fold_16(k3_k4) ^ x4[3];
+        for block in remaining_values {
+            x = x.fold_16(k3_k4) ^ *block;
+        }
+    
+        // Step 3 - Final Reduction of 128-bits
+        let k4_k5 = SimdValue::new([constants.k4, constants.k5]);
+        let x = x.fold_8(k4_k5);
+        let x = x.fold_4(k4_k5);
+    
+        // Barrett Reduction
+        let px_u = SimdValue::new([constants.px, constants.u]);
+        let cx = x.barret_reduction_32(px_u);
+
+        update_nolookup(cx, algorithm, bytes_after)
+    } else {
+        let bytes_len = bytes.len() + 4;
+        let bytes = bytes.as_ptr();
+
+        let mut x = read_unaligned(bytes as *const SimdValue);
+
+        if bytes_len <= 16 {
+            x = x.swap_bytes();
+            x = SimdValue(x86_64::_mm_slli_si128(x.shift_right(20 - bytes_len as u8).0, 4));
+
+            x ^= SimdValue::new([crc as u64, 0]).shift_left(bytes_len as u8 - 4);
+        } else {
+            let mut n = ((!bytes_len) + 1) & 15;
+
+            x ^= SimdValue::new([crc.swap_bytes() as u64, 0]);
+            x = x.swap_bytes();
+
+            let mut next_data = read_unaligned(bytes.offset(16) as *const SimdValue);
+
+            next_data = next_data.swap_bytes();
+            next_data = SimdValue(x86_64::_mm_or_si128(next_data.shift_right(n as u8).0, x.shift_left(16 - n as u8).0));
+
+            x = x.shift_right(n as u8);
+
+            if bytes_len <= 32 {
+                next_data = SimdValue(x86_64::_mm_slli_si128(x86_64::_mm_srli_si128(next_data.0, 4), 4));
+            }
+
+            let k4_k3 = SimdValue::new([constants.k4, constants.k3]);
+            x = x.fold_16(k4_k3) ^ next_data;
+
+            if bytes_len > 32 {
+                let mut new_data;
+                n = 16 + 16 - n;
+                while n < bytes_len - 16 {
+                    new_data = read_unaligned(bytes.offset(n as isize) as *const SimdValue);
+                    new_data = new_data.swap_bytes();
+                    x = x.fold_16(k4_k3) ^ new_data;
+                    n += 16;
+                }
+
+                new_data = read_unaligned(bytes.offset(n as isize - 4) as *const SimdValue);
+                new_data = new_data.swap_bytes();
+                new_data = SimdValue(x86_64::_mm_slli_si128(new_data.0, 4));
+                x = x.fold_16(k4_k3) ^ new_data;
+            }
+        }
+
+        let k6_k6 = SimdValue::new([constants.k6, constants.k6]);
+        x = x.fold_4n(k6_k6);
+
+        let px_u = SimdValue::new([constants.px, constants.u]);
+        let cx = x.barret_reduction_32n(px_u);
+
+        cx
     }
-
-    // Step 2 - Iteratively Fold by 1:
-    let k3_k4 = SimdValue::new([constants.k3, constants.k4]);
-    let mut x = x4[0].fold_16(k3_k4) ^ x4[1];
-    x = x.fold_16(k3_k4) ^ x4[2];
-    x = x.fold_16(k3_k4) ^ x4[3];
-    for block in remaining_values {
-        x = x.fold_16(k3_k4) ^ *block;
-    }
-
-    // Step 3 - Final Reduction of 128-bits
-    let k4_k5 = SimdValue::new([constants.k4, constants.k5]);
-    let x = x.fold_8(k4_k5);
-    let x = x.fold_4(k4_k5);
-
-    // Barrett Reduction
-    let px_u = SimdValue::new([constants.px, constants.u]);
-    let cx = x.barret_reduction_32(px_u);
-
-    update_nolookup(cx, algorithm, bytes_after)
 }
 
 #[cfg(test)]
@@ -322,7 +382,7 @@ mod test {
             residue: 0xb798b438,
         };
 
-        let algs_to_test = [&CRC_32_ISCSI /*&CRC_32_ISCSI_NONREFLEX*/];
+        let algs_to_test = [&CRC_32_ISCSI, &CRC_32_ISCSI_NONREFLEX];
 
         for alg in algs_to_test {
             for data in data {
@@ -340,6 +400,10 @@ mod test {
                 assert_eq!(digest.finalize(), expected);
 
                 let mut digest = crc_nolookup.digest();
+                digest.update(data.as_bytes());
+                assert_eq!(digest.finalize(), expected);
+
+                let mut digest = crc_simd.digest();
                 digest.update(data.as_bytes());
                 assert_eq!(digest.finalize(), expected);
 

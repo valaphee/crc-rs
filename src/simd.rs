@@ -65,14 +65,14 @@ impl SimdConstants {
             }
         } else {
             Self {
-                k1: xt_mod_px(4 * 128 + 64, px),
-                k2: xt_mod_px(4 * 128, px),
-                k3: xt_mod_px(128 + 64, px),
-                k4: xt_mod_px(128, px),
-                k5: xt_mod_px(96, px),
-                k6: xt_mod_px(64, px),
+                k1: xt_mod_px(4 * 128 + 64, px) >> 32,
+                k2: xt_mod_px(4 * 128, px) >> 32,
+                k3: xt_mod_px(128 + 64, px) >> 32,
+                k4: xt_mod_px(128, px) >> 32,
+                k5: xt_mod_px(96, px) >> 32,
+                k6: xt_mod_px(64, px) >> 32,
                 px,
-                u: u(px),
+                u: u(px) & (1 << algorithm.width) - 1,
             }
         }
     }
@@ -123,12 +123,12 @@ impl SimdConstants {
             }
         } else {
             Self {
-                k1: xt_mod_px(2 * (4 * 128 + 64), px),
-                k2: xt_mod_px(2 * (4 * 128), px),
-                k3: xt_mod_px(2 * (128 + 64), px),
-                k4: xt_mod_px(2 * 128, px),
-                k5: xt_mod_px(2 * 96, px),
-                k6: xt_mod_px(2 * 64, px),
+                k1: xt_mod_px(2 * (4 * 128 + 64), px) >> 32,
+                k2: xt_mod_px(2 * (4 * 128), px) >> 32,
+                k3: xt_mod_px(2 * (128 + 64), px) >> 32,
+                k4: xt_mod_px(2 * 128, px) >> 32,
+                k5: xt_mod_px(2 * 96, px) >> 32,
+                k6: xt_mod_px(2 * 64, px) >> 32,
                 px,
                 u: u(px),
             }
@@ -148,6 +148,17 @@ pub(crate) trait SimdValueExt: BitXor + BitXorAssign + Sized {
     unsafe fn barret_reduction_32(self, px_u: Self) -> u32;
 
     unsafe fn barret_reduction_64(self, px_u: Self) -> u64;
+
+    unsafe fn fold_4n(self, x_mod_p: Self) -> Self;
+
+    unsafe fn barret_reduction_32n(self, px_u: Self) -> u32;
+
+    unsafe fn swap_bytes(self) -> Self;
+
+    unsafe fn shift_right(self, num: u8) -> Self;
+
+    unsafe fn shift_left(self, num: u8) -> Self;
+
 }
 
 pub(crate) use x86::SimdValue;

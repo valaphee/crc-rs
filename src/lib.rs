@@ -25,7 +25,7 @@
 //! digest.update(b"123456789");
 //! assert_eq!(digest.finalize(), 0xaee7);
 //! ```
-#![no_std]
+//#![no_std]
 #![feature(slice_as_chunks)] // temporary
 //#![forbid(unsafe_code)]
 
