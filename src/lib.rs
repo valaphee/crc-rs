@@ -29,7 +29,6 @@
 //#![forbid(unsafe_code)]
 
 pub use crc_catalog::*;
-use simd::SimdValue;
 
 mod crc128;
 mod crc16;
@@ -74,7 +73,7 @@ impl<W: Width> crate::Implementation for NoTable<W> {
 
 impl<W: Width> crate::Implementation for Simd<W> {
     type Width = W;
-    type Table = ([[W; 256]; 16], [SimdValue; 4]);
+    type Table = ([[W; 256]; 16], [simd::SimdValue; 4]);
 }
 
 mod private {

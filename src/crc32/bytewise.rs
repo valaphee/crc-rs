@@ -15,7 +15,7 @@ impl Crc<Bytewise<u32>> {
         finalize(self.algorithm, crc)
     }
 
-    pub(crate) const fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
+    const fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
         update_bytewise(crc, self.algorithm.refin, &self.table, bytes)
     }
 

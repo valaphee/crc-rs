@@ -15,7 +15,7 @@ impl Crc<Slice16<u32>> {
         finalize(self.algorithm, crc)
     }
 
-    pub(crate) const fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
+    const fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
         update_slice16(crc, self.algorithm.refin, &self.table, bytes)
     }
 

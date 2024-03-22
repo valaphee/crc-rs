@@ -252,12 +252,12 @@ mod test {
     #[test]
     fn correctness() {
         let data: &[&str] = &[
-        /*"",
+        "",
         "1",
         "1234",
         "123456789",
         "0123456789ABCDE",
-        "01234567890ABCDEFGHIJK",*/
+        "01234567890ABCDEFGHIJK",
         "01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK",
     ];
 
@@ -277,7 +277,7 @@ mod test {
         for alg in algs_to_test {
             for data in data {
                 let crc_slice16 = Crc::<Slice16<u64>>::new(alg);
-                let crc_nolookup: Crc<NoTable<u64>> = Crc::<NoTable<u64>>::new(alg);
+                let crc_nolookup = Crc::<NoTable<u64>>::new(alg);
                 let expected = Crc::<Bytewise<u64>>::new(alg).checksum(data.as_bytes());
 
                 // Check that doing all at once works as expected
