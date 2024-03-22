@@ -162,12 +162,11 @@ pub(crate) unsafe fn update_simd(
     constants: &SimdConstants,
     bytes: &[u8],
 ) -> u32 {
-    return if algorithm.refin {
-        let (bytes_before, values, bytes_after) = bytes.align_to::<SimdValue>();
-        let (chunks, remaining_values) = values.as_chunks::<4>();
+    if algorithm.refin {
+        let (bytes_before, values, bytes_after) = bytes.align_to::<[SimdValue; 4]>();
 
         // Less than bytes needed for 16-byte alignment + 128
-        let Some(x4) = chunks.get(0) else {
+        let Some(x4) = values.get(0) else {
             return update_nolookup(crc, algorithm, bytes);
         };
 
@@ -177,11 +176,10 @@ pub(crate) unsafe fn update_simd(
         let mut x4 = *x4;
         x4[0] ^= SimdValue::new([crc as u64, 0]);
         let k1_k2 = SimdValue::new([constants.k1, constants.k2]);
-        for chunk in &chunks[1..] {
-            x4[0] = x4[0].fold_16(k1_k2) ^ chunk[0];
-            x4[1] = x4[1].fold_16(k1_k2) ^ chunk[1];
-            x4[2] = x4[2].fold_16(k1_k2) ^ chunk[2];
-            x4[3] = x4[3].fold_16(k1_k2) ^ chunk[3];
+        for chunk in &values[1..] {
+            for (xi, yi) in x4.iter_mut().zip(chunk.iter()) {
+                *xi = *yi ^ xi.fold_16(k1_k2)
+            }
         }
 
         // Step 2 - Iteratively Fold by 1:
@@ -189,10 +187,7 @@ pub(crate) unsafe fn update_simd(
         let mut x = x4[0].fold_16(k3_k4) ^ x4[1];
         x = x.fold_16(k3_k4) ^ x4[2];
         x = x.fold_16(k3_k4) ^ x4[3];
-        for block in remaining_values {
-            x = x.fold_16(k3_k4) ^ *block;
-        }
-    
+
         // Step 3 - Final Reduction of 128-bits
         let k4_k5 = SimdValue::new([constants.k4, constants.k5]);
         let x = x.fold_8(k4_k5);
@@ -200,129 +195,129 @@ pub(crate) unsafe fn update_simd(
     
         // Barrett Reduction
         let px_u = SimdValue::new([constants.px, constants.u]);
-        let cx = x.barret_reduction_32(px_u);
+        crc = x.barret_reduction_32(px_u);
 
-        update_nolookup(cx, algorithm, bytes_after)
+        return update_nolookup(crc, algorithm, bytes_after);
+    }
+
+    let bytes_len = bytes.len() + 4;
+    let bytes_ptr_start = bytes.as_ptr() as *const SimdValue;
+    let mut bytes_ptr = bytes_ptr_start;
+
+    let mut x = read_unaligned(bytes_ptr as *const SimdValue);
+    bytes_ptr = bytes_ptr.add(1);
+
+    if bytes_len <= 16 {
+        x = x.swap_bytes();
+        x = SimdValue(x86_64::_mm_slli_si128(x.shift_right(20 - bytes_len as u8).0, 4));
+        x ^= SimdValue::new([crc as u64, 0]).shift_left(bytes_len as u8 - 4);
     } else {
-        let bytes_len = bytes.len() + 4;
-        let bytes_ptr_start = bytes.as_ptr() as *const SimdValue;
-        let mut bytes_ptr = bytes_ptr_start;
+        let n = ((!bytes_len) + 1) & 15;
 
-        let mut x = read_unaligned(bytes_ptr as *const SimdValue);
-        bytes_ptr = bytes_ptr.add(1);
+        x ^= SimdValue::new([crc.swap_bytes() as u64, 0]);
+        x = x.swap_bytes();
 
-        if bytes_len <= 16 {
-            x = x.swap_bytes();
-            x = SimdValue(x86_64::_mm_slli_si128(x.shift_right(20 - bytes_len as u8).0, 4));
-            x ^= SimdValue::new([crc as u64, 0]).shift_left(bytes_len as u8 - 4);
-        } else {
-            let n = ((!bytes_len) + 1) & 15;
+        let mut y = read_unaligned(bytes_ptr);
+        bytes_ptr = bytes_ptr.add(1).byte_sub(n);
+        y = y.swap_bytes();
+        y = SimdValue(x86_64::_mm_or_si128(y.shift_right(n as u8).0, x.shift_left(16 - n as u8).0));
 
-            x ^= SimdValue::new([crc.swap_bytes() as u64, 0]);
-            x = x.swap_bytes();
+        x = x.shift_right(n as u8);
 
-            let mut y = read_unaligned(bytes_ptr);
-            bytes_ptr = bytes_ptr.add(1).byte_sub(n);
-            y = y.swap_bytes();
-            y = SimdValue(x86_64::_mm_or_si128(y.shift_right(n as u8).0, x.shift_left(16 - n as u8).0));
-
-            x = x.shift_right(n as u8);
-
-            if bytes_len <= 32 {
-                y = SimdValue(x86_64::_mm_slli_si128(x86_64::_mm_srli_si128(y.0, 4), 4));
-            }
-
-            let k4_k3 = SimdValue::new([constants.k4, constants.k3]);
-            x = x.fold_16(k4_k3) ^ y;
-
-            if bytes_len > 16 * 4 {
-                let mut new_data;
-
-                let mut x1 = read_unaligned(bytes_ptr);
-                bytes_ptr = bytes_ptr.add(1);
-                x1 = x1.swap_bytes();
-
-                let mut x2 = read_unaligned(bytes_ptr);
-                bytes_ptr = bytes_ptr.add(1);
-                x2 = x2.swap_bytes();
-
-                let mut x3 = read_unaligned(bytes_ptr);
-                bytes_ptr = bytes_ptr.add(1);
-                x3 = x3.swap_bytes();
-
-                let k2_k1 = SimdValue::new([constants.k2, constants.k1]);
-                let bytes_ptr_end = bytes_ptr_start.byte_add(bytes_len - (16 * 4));
-                while bytes_ptr < bytes_ptr_end {
-                    new_data = read_unaligned(bytes_ptr);
-                    bytes_ptr = bytes_ptr.add(1);
-                    new_data = new_data.swap_bytes();
-                    x = x.fold_16(k2_k1) ^ new_data;
-
-                    new_data = read_unaligned(bytes_ptr);
-                    bytes_ptr = bytes_ptr.add(1);
-                    new_data = new_data.swap_bytes();
-                    x1 = x1.fold_16(k2_k1) ^ new_data;
-
-                    new_data = read_unaligned(bytes_ptr);
-                    bytes_ptr = bytes_ptr.add(1);
-                    new_data = new_data.swap_bytes();
-                    x2 = x2.fold_16(k2_k1) ^ new_data;
-
-                    new_data = read_unaligned(bytes_ptr);
-                    bytes_ptr = bytes_ptr.add(1);
-                    new_data = new_data.swap_bytes();
-                    x3 = x3.fold_16(k2_k1) ^ new_data;
-                }
-
-                x = x.fold_16(k4_k3) ^ x1;
-                x = x.fold_16(k4_k3) ^ x2;
-                x = x.fold_16(k4_k3) ^ x3;
-
-                let bytes_ptr_end = bytes_ptr_start.byte_add(bytes_len - 16);
-                while bytes_ptr < bytes_ptr_end {
-                    new_data = read_unaligned(bytes_ptr);
-                    bytes_ptr = bytes_ptr.add(1);
-                    new_data = new_data.swap_bytes();
-                    x = x.fold_16(k4_k3) ^ new_data;
-                }
-
-                bytes_ptr = bytes_ptr.byte_sub(4);
-                new_data = read_unaligned(bytes_ptr);
-                new_data = new_data.swap_bytes();
-                new_data = SimdValue(x86_64::_mm_slli_si128(new_data.0, 4));
-                x = x.fold_16(k4_k3) ^ new_data;
-            } else if bytes_len > 32 {
-                let mut new_data;
-                let bytes_ptr_end = bytes_ptr_start.byte_add(bytes_len - 16);
-                while bytes_ptr < bytes_ptr_end {
-                    new_data = read_unaligned(bytes_ptr);
-                    bytes_ptr = bytes_ptr.add(1);
-                    new_data = new_data.swap_bytes();
-                    x = x.fold_16(k4_k3) ^ new_data;
-                }
-
-                bytes_ptr = bytes_ptr.byte_sub(4);
-                new_data = read_unaligned(bytes_ptr);
-                new_data = new_data.swap_bytes();
-                new_data = SimdValue(x86_64::_mm_slli_si128(new_data.0, 4));
-                x = x.fold_16(k4_k3) ^ new_data;
-            }
+        if bytes_len <= 32 {
+            y = SimdValue(x86_64::_mm_slli_si128(x86_64::_mm_srli_si128(y.0, 4), 4));
         }
 
-        let k6_k6 = SimdValue::new([constants.k6, constants.k6]);
-        x = x.fold_4n(k6_k6);
+        let k4_k3 = SimdValue::new([constants.k4, constants.k3]);
+        x = x.fold_16(k4_k3) ^ y;
 
-        let px_u = SimdValue::new([constants.px, constants.u]);
-        let cx = x.barret_reduction_32n(px_u);
+        if bytes_len > 16 * 4 {
+            let mut new_data;
 
-        cx
+            let mut x1 = read_unaligned(bytes_ptr);
+            bytes_ptr = bytes_ptr.add(1);
+            x1 = x1.swap_bytes();
+
+            let mut x2 = read_unaligned(bytes_ptr);
+            bytes_ptr = bytes_ptr.add(1);
+            x2 = x2.swap_bytes();
+
+            let mut x3 = read_unaligned(bytes_ptr);
+            bytes_ptr = bytes_ptr.add(1);
+            x3 = x3.swap_bytes();
+
+            let k2_k1 = SimdValue::new([constants.k2, constants.k1]);
+            let bytes_ptr_end = bytes_ptr_start.byte_add(bytes_len - (16 * 4));
+            while bytes_ptr < bytes_ptr_end {
+                new_data = read_unaligned(bytes_ptr);
+                bytes_ptr = bytes_ptr.add(1);
+                new_data = new_data.swap_bytes();
+                x = x.fold_16(k2_k1) ^ new_data;
+
+                new_data = read_unaligned(bytes_ptr);
+                bytes_ptr = bytes_ptr.add(1);
+                new_data = new_data.swap_bytes();
+                x1 = x1.fold_16(k2_k1) ^ new_data;
+
+                new_data = read_unaligned(bytes_ptr);
+                bytes_ptr = bytes_ptr.add(1);
+                new_data = new_data.swap_bytes();
+                x2 = x2.fold_16(k2_k1) ^ new_data;
+
+                new_data = read_unaligned(bytes_ptr);
+                bytes_ptr = bytes_ptr.add(1);
+                new_data = new_data.swap_bytes();
+                x3 = x3.fold_16(k2_k1) ^ new_data;
+            }
+
+            x = x.fold_16(k4_k3) ^ x1;
+            x = x.fold_16(k4_k3) ^ x2;
+            x = x.fold_16(k4_k3) ^ x3;
+
+            let bytes_ptr_end = bytes_ptr_start.byte_add(bytes_len - 16);
+            while bytes_ptr < bytes_ptr_end {
+                new_data = read_unaligned(bytes_ptr);
+                bytes_ptr = bytes_ptr.add(1);
+                new_data = new_data.swap_bytes();
+                x = x.fold_16(k4_k3) ^ new_data;
+            }
+
+            bytes_ptr = bytes_ptr.byte_sub(4);
+            new_data = read_unaligned(bytes_ptr);
+            new_data = new_data.swap_bytes();
+            new_data = SimdValue(x86_64::_mm_slli_si128(new_data.0, 4));
+            x = x.fold_16(k4_k3) ^ new_data;
+        } else if bytes_len > 32 {
+            let mut new_data;
+            let bytes_ptr_end = bytes_ptr_start.byte_add(bytes_len - 16);
+            while bytes_ptr < bytes_ptr_end {
+                new_data = read_unaligned(bytes_ptr);
+                bytes_ptr = bytes_ptr.add(1);
+                new_data = new_data.swap_bytes();
+                x = x.fold_16(k4_k3) ^ new_data;
+            }
+
+            bytes_ptr = bytes_ptr.byte_sub(4);
+            new_data = read_unaligned(bytes_ptr);
+            new_data = new_data.swap_bytes();
+            new_data = SimdValue(x86_64::_mm_slli_si128(new_data.0, 4));
+            x = x.fold_16(k4_k3) ^ new_data;
+        }
     }
+
+    let k6_k6 = SimdValue::new([constants.k6, constants.k6]);
+    x = x.fold_4n(k6_k6);
+
+    let px_u = SimdValue::new([constants.px, constants.u]);
+    let cx = x.barret_reduction_32n(px_u);
+
+    cx
 }
 
 #[cfg(test)]
 mod test {
     use crate::{Bytewise, Crc, Implementation, NoTable, Simd, Slice16};
-    use crc_catalog::{Algorithm, CRC_16_UMTS, CRC_24_OPENPGP, CRC_32_ISCSI};
+    use crc_catalog::{Algorithm, CRC_32_ISCSI};
 
     #[test]
     fn default_table_size() {
@@ -418,14 +413,14 @@ mod test {
     /// Test this optimized version against the well known implementation to ensure correctness
     #[test]
     fn correctness() {
-        let data: &[String] = &[
-            //"",
-            //"1",
-            //"1234",
-            //"123456789",
-            //"0123456789A".to_owned(),
-            //"01234567890ABCDEFGHIJK",
-            "01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK".to_owned(),
+        let data: &[&str] = &[
+            "",
+            "1",
+            "1234",
+            "123456789",
+            "0123456789A",
+            "01234567890ABCDEFGHIJK",
+            "01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK",
         ];
 
         pub const CRC_32_ISCSI_NONREFLEX: Algorithm<u32> = Algorithm {
@@ -440,7 +435,7 @@ mod test {
             residue: 0xb798b438,
         };
 
-        let algs_to_test = [&CRC_32_ISCSI_NONREFLEX];
+        let algs_to_test = [&CRC_32_ISCSI, &CRC_32_ISCSI_NONREFLEX];
 
         for alg in algs_to_test {
             for data in data {
@@ -452,6 +447,7 @@ mod test {
                 // Check that doing all at once works as expected
                 assert_eq!(crc_slice16.checksum(data.as_bytes()), expected);
                 assert_eq!(crc_nolookup.checksum(data.as_bytes()), expected);
+                assert_eq!(crc_simd.checksum(data.as_bytes()), expected);
 
                 let mut digest = crc_slice16.digest();
                 digest.update(data.as_bytes());
@@ -466,7 +462,7 @@ mod test {
                 assert_eq!(digest.finalize(), expected);
 
                 // Check that we didn't break updating from multiple sources
-                /*if data.len() > 2 {
+                if data.len() > 2 {
                     let data = data.as_bytes();
                     let data1 = &data[..data.len() / 2];
                     let data2 = &data[data.len() / 2..];
@@ -482,7 +478,7 @@ mod test {
                     digest.update(data1);
                     digest.update(data2);
                     assert_eq!(digest.finalize(), expected);
-                }*/
+                }
             }
         }
     }

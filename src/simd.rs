@@ -7,8 +7,28 @@ use crc_catalog::Algorithm;
 pub struct SimdConstants {
     pub k1: u64,
     pub k2: u64,
+
     pub k3: u64,
     pub k4: u64,
+
+    pub k3_1: u64,
+    pub k4_1: u64,
+
+    pub k3_2: u64,
+    pub k4_2: u64,
+
+    pub k3_3: u64,
+    pub k4_3: u64,
+
+    pub k3_4: u64,
+    pub k4_4: u64,
+
+    pub k3_5: u64,
+    pub k4_5: u64,
+
+    pub k3_6: u64,
+    pub k4_6: u64,
+
     pub k5: u64,
     pub k6: u64,
     pub px: u64,
@@ -62,6 +82,18 @@ impl SimdConstants {
                 k6: xt_mod_px(32, px).reverse_bits() << 1,
                 px: px.reverse_bits() >> 31,
                 u: u(px).reverse_bits() >> 31,
+                k3_1: 0,
+                k4_1: 0,
+                k3_2: 0,
+                k4_2: 0,
+                k3_3: 0,
+                k4_3: 0,
+                k3_4: 0,
+                k4_4: 0,
+                k3_5: 0,
+                k4_5: 0,
+                k3_6: 0,
+                k4_6: 0,
             }
         } else {
             Self {
@@ -73,6 +105,18 @@ impl SimdConstants {
                 k6: xt_mod_px(64, px) >> 32,
                 px,
                 u: u(px) & (1 << algorithm.width) - 1,
+                k3_1: 0,
+                k4_1: 0,
+                k3_2: 0,
+                k4_2: 0,
+                k3_3: 0,
+                k4_3: 0,
+                k3_4: 0,
+                k4_4: 0,
+                k3_5: 0,
+                k4_5: 0,
+                k3_6: 0,
+                k4_6: 0,
             }
         }
     }
@@ -111,15 +155,39 @@ impl SimdConstants {
 
         let px = algorithm.poly << (u64::BITS as u8 - algorithm.width);
         if algorithm.refin {
-            Self {
+            /*Self {
                 k1: xt_mod_px(2 * (4 * 128 + 32), px).reverse_bits() << 1,
                 k2: xt_mod_px(2 * (4 * 128 - 32), px).reverse_bits() << 1,
                 k3: xt_mod_px(2 * (128 + 32), px).reverse_bits() << 1,
                 k4: xt_mod_px(2 * (128 - 32), px).reverse_bits() << 1,
                 k5: xt_mod_px(2 * 64, px).reverse_bits() << 1,
                 k6: xt_mod_px(2 * 32, px).reverse_bits() << 1,
-                px: px.reverse_bits() >> 31,
-                u: u(px).reverse_bits() >> 31,
+                px: px.reverse_bits() << 1 | 1,
+                u: u(px).reverse_bits() << 1 | 1,
+            }*/
+            Self {
+                k1: xt_mod_px(2 * 4 * 128 + 64, px).reverse_bits() << 1, // 2 * 4 * 128 + 64, 1088
+                k2: xt_mod_px(2 * 4 * 128 - 64, px).reverse_bits() << 1, // 2 * 4 * 128, 1024
+                k3: xt_mod_px(2 * 128 + 64, px).reverse_bits() << 1, // 320
+                k4: xt_mod_px(2 * 128 - 64, px).reverse_bits() << 1, // 256
+                //k3: xt_mod_px(960, px).reverse_bits() << 1,
+                //k4: 0x947874DE595052CB, //xt_mod_px(896, px).reverse_bits() << 1, // ?
+                k5: xt_mod_px(128, px).reverse_bits() << 1, // 128
+                k6: xt_mod_px(64, px).reverse_bits() << 1, // 
+                px: px.reverse_bits() << 1 | 1,
+                u: u(px).reverse_bits() << 1 | 1,
+                k3_1: xt_mod_px(832, px).reverse_bits() << 1,
+                k4_1: 0xE4CE2CD55FEA0037, //xt_mod_px(768, px).reverse_bits() << 1, // ?
+                k3_2: 0x2E30203212CAC325, //xt_mod_px(704, px).reverse_bits() << 1, // ?
+                k4_2: 0xE31D519421A63A5, //xt_mod_px(640, px).reverse_bits() << 1, // ?
+                k3_3: 0x6AE3EFBB9DD441F3, //xt_mod_px(576, px).reverse_bits() << 1, // ?
+                k4_3: xt_mod_px(512, px).reverse_bits() << 1,
+                k3_4: xt_mod_px(448, px).reverse_bits() << 1,
+                k4_4: xt_mod_px(384, px).reverse_bits() << 1,
+                k3_5: xt_mod_px(320, px).reverse_bits() << 1,
+                k4_5: 0x3BE653A30FE1AF51, //xt_mod_px(256, px).reverse_bits() << 1, //?
+                k3_6: xt_mod_px(192, px).reverse_bits() << 1,
+                k4_6: xt_mod_px(128, px).reverse_bits() << 1,
             }
         } else {
             Self {
@@ -131,6 +199,18 @@ impl SimdConstants {
                 k6: xt_mod_px(2 * 64, px) >> 32,
                 px,
                 u: u(px),
+                k3_1: 0,
+                k4_1: 0,
+                k3_2: 0,
+                k4_2: 0,
+                k3_3: 0,
+                k4_3: 0,
+                k3_4: 0,
+                k4_4: 0,
+                k3_5: 0,
+                k4_5: 0,
+                k3_6: 0,
+                k4_6: 0,
             }
         }
     }

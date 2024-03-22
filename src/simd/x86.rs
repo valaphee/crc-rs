@@ -49,9 +49,9 @@ impl SimdValueExt for SimdValue {
 
     unsafe fn barret_reduction_64(self, px_u: Self) -> u64 {
         let t1 = Self(arch::_mm_clmulepi64_si128(self.0, px_u.0, 0x10));
-        let t2 = Self(arch::_mm_clmulepi64_si128(t1.0, px_u.0, 0x00));
         let t2hi = Self(arch::_mm_slli_si128(t1.0, 8));
-        arch::_mm_extract_epi64((self ^ t2 ^ t2hi).0, 1) as u64
+        let t2 = Self(arch::_mm_clmulepi64_si128(t1.0, px_u.0, 0x00));
+        arch::_mm_extract_epi64((t2hi ^ t2 ^ self).0, 1) as u64
     }
 
     unsafe fn fold_4n(self, x_mod_p: Self) -> Self {

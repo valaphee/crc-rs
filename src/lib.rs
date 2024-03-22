@@ -74,7 +74,7 @@ impl<W: Width> crate::Implementation for NoTable<W> {
 
 impl<W: Width> crate::Implementation for Simd<W> {
     type Width = W;
-    type Table = simd::SimdConstants;
+    type Table = ([[W; 256]; 16], simd::SimdConstants);
 }
 
 mod private {

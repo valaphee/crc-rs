@@ -1,14 +1,16 @@
 use crate::crc32::update_simd;
 use crate::simd::SimdConstants;
+use crate::table::crc16_table_slice_16;
 use crate::{Algorithm, Crc, Digest, Simd};
 
 use super::{finalize, init};
 
 impl Crc<Simd<u16>> {
     pub const fn new(algorithm: &'static Algorithm<u16>) -> Self {
+        let table = crc16_table_slice_16(algorithm.width, algorithm.poly, algorithm.refin);
         Self {
             algorithm,
-            table: SimdConstants::new_32(&Algorithm {
+            table: (table, SimdConstants::new_32(&Algorithm {
                 width: algorithm.width,
                 poly: algorithm.poly as u32,
                 init: algorithm.init as u32,
@@ -17,7 +19,7 @@ impl Crc<Simd<u16>> {
                 xorout: algorithm.xorout as u32,
                 check: algorithm.check as u32,
                 residue: algorithm.residue as u32,
-            }),
+            })),
         }
     }
 
@@ -42,7 +44,7 @@ impl Crc<Simd<u16>> {
                     check: self.algorithm.check as u32,
                     residue: self.algorithm.residue as u32,
                 },
-                &self.table,
+                &self.table.1,
                 bytes,
             ) as u16
         }

@@ -240,12 +240,12 @@ mod test {
     #[test]
     fn correctness() {
         let data: &[&str] = &[
-            /*"",
+            "",
             "1",
             "1234",
             "123456789",
             "0123456789ABCDE",
-            "01234567890ABCDEFGHIJK",*/
+            "01234567890ABCDEFGHIJK",
             "01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK01234567890ABCDEFGHIJK",
         ];
 
@@ -287,7 +287,7 @@ mod test {
                 assert_eq!(digest.finalize(), expected);
 
                 // Check that we didn't break updating from multiple sources
-                /*if data.len() > 2 {
+                if data.len() > 2 {
                     let data = data.as_bytes();
                     let data1 = &data[..data.len() / 2];
                     let data2 = &data[data.len() / 2..];
@@ -303,7 +303,7 @@ mod test {
                     digest.update(data1);
                     digest.update(data2);
                     assert_eq!(digest.finalize(), expected);
-                }*/
+                }
             }
         }
     }
