@@ -144,7 +144,6 @@ pub(crate) const fn crc32_table_slice_16(width: u8, poly: u32, reflect: bool) ->
     table
 }
 
-
 pub(crate) const fn crc32_simd_coefficients(width: u8, poly: u32) -> [SimdValue; 4] {
     const fn xt_mod_px(mut t: u32, px: u64) -> u64 {
         if t < 32 {

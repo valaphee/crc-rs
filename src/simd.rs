@@ -1,6 +1,8 @@
 mod x86;
 
 pub(crate) trait SimdValueOps {
+    fn is_supported() -> bool;
+
     unsafe fn xor(self, value: u64) -> Self;
 
     unsafe fn fold_16(self, x_mod_p: Self, value: Self) -> Self;

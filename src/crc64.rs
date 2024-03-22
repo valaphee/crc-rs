@@ -1,4 +1,4 @@
-use crate::{simd::{SimdValue, SimdValueOps}, util::crc64};
+use crate::util::crc64;
 use crc_catalog::Algorithm;
 
 mod bytewise;

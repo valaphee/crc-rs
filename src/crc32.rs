@@ -152,16 +152,19 @@ const fn update_slice16(
     crc
 }
 
-#[target_feature(enable = "pclmulqdq", enable = "sse2", enable = "sse4.1")]
+#[target_feature(enable = "sse2", enable = "sse4.1", enable = "pclmulqdq")]
 pub(crate) unsafe fn update_simd(
-    mut crc: u32,
+    crc: u32,
     coefficients: &[SimdValue; 4],
     first_chunk: &[SimdValue; 4],
     chunks: &[[SimdValue; 4]],
 ) -> u32 {
     let mut x4 = *first_chunk;
+
+    // Apply initial crc value
     x4[0] = x4[0].xor(crc as u64);
 
+    // Iteratively Fold by 4:
     let k1_k2 = coefficients[0];
     for chunk in chunks {
         for (x, value) in x4.iter_mut().zip(chunk.iter()) {
@@ -169,19 +172,20 @@ pub(crate) unsafe fn update_simd(
         }
     }
 
+    // Iteratively Fold by 1:
     let k3_k4 = coefficients[1];
     let mut x = x4[0].fold_16(k3_k4, x4[1]);
     x = x.fold_16(k3_k4, x4[2]);
     x = x.fold_16(k3_k4, x4[3]);
 
+    // Final Reduction of 128-bits
     let k5_k6 = coefficients[2];
-    let x = x.fold_8(k3_k4);
-    let x = x.fold_4(k5_k6);
+    x = x.fold_8(k3_k4);
+    x = x.fold_4(k5_k6);
 
+    // Barret Reduction
     let px_u = coefficients[3];
-    crc = x.barret_reduction_32(px_u);
-
-    return crc;
+    x.barret_reduction_32(px_u)
 }
 
 #[cfg(test)]
