@@ -1,10 +1,9 @@
-use crate::{simd::{SimdConstants, SimdValue, SimdValueExt}, util::crc64};
+use crate::{simd::{SimdValue, SimdValueOps}, util::crc64};
 use crc_catalog::Algorithm;
 
 mod bytewise;
 mod default;
 mod nolookup;
-mod simd;
 mod slice16;
 
 const fn init(algorithm: &Algorithm<u64>, initial: u64) -> u64 {
@@ -153,69 +152,6 @@ const fn update_slice16(
     crc
 }
 
-#[target_feature(enable = "pclmulqdq", enable = "sse2", enable = "sse4.1")]
-pub(crate) unsafe fn update_simd(
-    mut crc: u64,
-    algorithm: &Algorithm<u64>,
-    constants: &SimdConstants,
-    bytes: &[u8],
-) -> u64 {
-    //println!("{:X?}", constants);
-    let (bytes_before, values, bytes_after) = bytes.align_to::<[SimdValue; 4]>();
-    //let (chunks, remaining_values) = values.as_chunks::<8>();
-
-    // Less than bytes needed for 16-byte alignment + 128
-    let Some(x4) = values.get(0) else {
-        return update_nolookup(crc, algorithm, bytes);
-    };
-
-    crc = update_nolookup(crc, algorithm, bytes_before);
-
-    // Step 1 - Iteratively Fold by 4:
-    let mut x4 = *x4;
-    x4[0] ^= SimdValue::new([crc as u64, 0]);
-    let k1_k2 = SimdValue::new([constants.k1, constants.k2]);
-    for chunk in &values[1..] {
-        x4[0] = x4[0].fold_16(k1_k2) ^ chunk[0];
-        x4[1] = x4[1].fold_16(k1_k2) ^ chunk[1];
-        x4[2] = x4[2].fold_16(k1_k2) ^ chunk[2];
-        x4[3] = x4[3].fold_16(k1_k2) ^ chunk[3];
-        /*x4[4] = x4[4].fold_16(k1_k2) ^ chunk[4];
-        x4[5] = x4[5].fold_16(k1_k2) ^ chunk[5];
-        x4[6] = x4[6].fold_16(k1_k2) ^ chunk[6];
-        x4[7] = x4[7].fold_16(k1_k2) ^ chunk[7];*/
-    }
-
-    // Step 2 - Iteratively Fold by 1:
-    /*let coeffs = [
-        SimdValue::new([constants.k3, constants.k4]), // fold by distance of 112 bytes
-        SimdValue::new([constants.k3_1, constants.k4_1]), // fold by distance of 96 bytes
-        SimdValue::new([constants.k3_2, constants.k4_2]), // fold by distance of 80 bytes
-        SimdValue::new([constants.k3_3, constants.k4_3]), // fold by distance of 64 bytes
-        SimdValue::new([constants.k3_4, constants.k4_4]), // fold by distance of 48 bytes
-        SimdValue::new([constants.k3_5, constants.k4_5]), // fold by distance of 32 bytes
-        SimdValue::new([constants.k3_6, constants.k4_6]), // fold by distance of 16 bytes
-    ];*/
-    let k3_k4 = SimdValue::new([constants.k3, constants.k4]);
-    let mut x = x4[0].fold_16(k3_k4) ^ x4[1];
-    x = x.fold_16(k3_k4) ^ x4[2];
-    x = x.fold_16(k3_k4) ^ x4[3];
-    //let x = x4.iter().zip(&coeffs).fold(x4[7], |acc, (m, c)| acc ^ m.fold_16(*c));
-    /*for block in remaining_values {
-        x = x.fold_16(k3_k4) ^ *block;
-    }*/
-
-    // Step 3 - Final Reduction of 128-bits
-    let k5_k5 = SimdValue::new([constants.k5, constants.k5]);
-    let x = x.fold_8(k5_k5);
-
-    // Barrett Reduction
-    let px_u = SimdValue::new([constants.px, constants.u]);
-    let cx = x.barret_reduction_64(px_u);
-
-    update_nolookup(cx, algorithm, bytes_after)
-}
-
 #[cfg(test)]
 mod test {
     use crate::{Bytewise, Crc, Implementation, NoTable, Simd, Slice16};
@@ -336,29 +272,23 @@ mod test {
             residue: 0x0000000000000000,
         };
 
-        let algs_to_test = [/*&CRC_64_ECMA_182,*/ &CRC_64_ECMA_182_REFLEX];
+        let algs_to_test = [&CRC_64_ECMA_182, &CRC_64_ECMA_182_REFLEX];
 
         for alg in algs_to_test {
             for data in data {
                 let crc_slice16 = Crc::<Slice16<u64>>::new(alg);
                 let crc_nolookup: Crc<NoTable<u64>> = Crc::<NoTable<u64>>::new(alg);
-                let crc_simd = Crc::<Simd<u64>>::new(alg);
                 let expected = Crc::<Bytewise<u64>>::new(alg).checksum(data.as_bytes());
 
                 // Check that doing all at once works as expected
                 assert_eq!(crc_slice16.checksum(data.as_bytes()), expected);
                 assert_eq!(crc_nolookup.checksum(data.as_bytes()), expected);
-                assert_eq!(crc_simd.checksum(data.as_bytes()), expected);
 
                 let mut digest = crc_slice16.digest();
                 digest.update(data.as_bytes());
                 assert_eq!(digest.finalize(), expected);
 
                 let mut digest = crc_nolookup.digest();
-                digest.update(data.as_bytes());
-                assert_eq!(digest.finalize(), expected);
-
-                let mut digest = crc_simd.digest();
                 digest.update(data.as_bytes());
                 assert_eq!(digest.finalize(), expected);
 
@@ -372,10 +302,6 @@ mod test {
                     digest.update(data2);
                     assert_eq!(digest.finalize(), expected);
                     let mut digest = crc_nolookup.digest();
-                    digest.update(data1);
-                    digest.update(data2);
-                    assert_eq!(digest.finalize(), expected);
-                    let mut digest = crc_simd.digest();
                     digest.update(data1);
                     digest.update(data2);
                     assert_eq!(digest.finalize(), expected);

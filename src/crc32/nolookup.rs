@@ -16,7 +16,7 @@ impl Crc<NoTable<u32>> {
         finalize(self.algorithm, crc)
     }
 
-    const fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
+    pub(crate) const fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
         update_nolookup(crc, self.algorithm, bytes)
     }
 

@@ -1,15 +1,14 @@
-use crate::simd::SimdConstants;
-use crate::table::crc32_table_slice_16;
+use crate::simd::SimdValue;
+use crate::table::{crc32_simd_coefficients, crc32_table_slice_16};
 use crate::{Algorithm, Crc, Digest, Simd};
 
-use super::{finalize, init, update_simd};
+use super::{finalize, init, update_simd, update_slice16};
 
 impl Crc<Simd<u32>> {
     pub const fn new(algorithm: &'static Algorithm<u32>) -> Self {
-        let table = crc32_table_slice_16(algorithm.width, algorithm.poly, algorithm.refin);
         Self {
             algorithm,
-            table: (table, SimdConstants::new_32(algorithm)),
+            table: (crc32_table_slice_16(algorithm.width, algorithm.poly, algorithm.refin), crc32_simd_coefficients(algorithm.width, algorithm.poly)),
         }
     }
 
@@ -19,9 +18,18 @@ impl Crc<Simd<u32>> {
         finalize(self.algorithm, crc)
     }
 
-    fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
-        // TODO
-        unsafe { update_simd(crc, self.algorithm, &self.table.1, bytes) }
+    fn update(&self, mut crc: u32, bytes: &[u8]) -> u32 {
+        let supported = true;
+        if !supported || !self.algorithm.refin {
+            return update_slice16(crc, self.algorithm.refin, &self.table.0, bytes);
+        }
+
+        let (bytes_before, chunks, bytes_after) = unsafe { bytes.align_to::<[SimdValue; 4]>() };
+        crc = update_slice16(crc, self.algorithm.refin, &self.table.0, bytes_before);
+        if let Some(first_chunk) = chunks.get(0) {
+            crc = unsafe { update_simd(crc, &self.table.1, first_chunk, &chunks[1..]) };
+        }
+        update_slice16(crc, self.algorithm.refin, &self.table.0, bytes_after)
     }
 
     pub fn digest(&self) -> Digest<Simd<u32>> {

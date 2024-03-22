@@ -66,7 +66,7 @@ impl Crc<u32> {
         finalize(self.algorithm, crc)
     }
 
-    const fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
+    pub(crate) const fn update(&self, crc: u32, bytes: &[u8]) -> u32 {
         #[cfg(all(
             not(feature = "no-table-mem-limit"),
             not(feature = "bytewise-mem-limit"),
